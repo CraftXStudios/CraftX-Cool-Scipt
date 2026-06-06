@@ -119,6 +119,15 @@ local iyassets = {
 	["infiniteyield/assets/reference.png"] = "rbxassetid://3523243755",
 	["infiniteyield/assets/settings.png"] = "rbxassetid://1204397029"
 }
+local ICONS = {
+    SETTINGS  = "rbxassetid://1204397029",
+    LOGOUT    = "rbxassetid://7335508827",
+    BACK      = "rbxassetid://11667086846",
+    EXECUTE   = "rbxassetid://10619077227",
+    DISCORD   = "rbxassetid://14882565614",
+    YOUTUBE   = "rbxassetid://14882565780",
+    CRAFTX    = "rbxassetid://6031280882", -- Star icon
+}
 
 local function getcustomasset(asset)
 	if waxgetcustomasset then
@@ -160,8 +169,276 @@ Cmdbar = Instance.new("TextBox")
 CMDsF = Instance.new("ScrollingFrame")
 cmdListLayout = Instance.new("UIListLayout")
 SettingsButton = Instance.new("ImageButton")
+KeyButton = Instance.new("ImageButton")
 ColorsButton = Instance.new("ImageButton")
 Settings = Instance.new("Frame")
+
+-- Discord URL key constant (the valid key users must enter)
+local DISCORD_URL = "https://discord.gg/Py3PVu5pSU"
+-- Path where key is saved for pre-filling (NOT for auto-login)
+local keySavePath = "CraftXKey.txt"
+
+-- Load any previously saved key just for pre-filling the textbox
+local savedKey = nil
+pcall(function()
+    if isfile and isfile(keySavePath) and readfile then
+        local raw = readfile(keySavePath)
+        if raw and raw ~= "" then savedKey = raw end
+    end
+end)
+
+-- Helper functions for Settings UI
+local function hideSettings()
+    Settings.Visible = false
+    Holder.Visible = true
+end
+
+local function showSettings()
+    if Holder then Holder.Visible = false end
+    if Settings then Settings.Visible = true end
+end
+_G.showIYSettings = showSettings
+_G.IY_PARENT = PARENT
+
+-- Forward-declare showKeyGate so logoutKey can reference it
+local showKeyGate
+
+-- Mandatory key gate — hides ALL UI until correct key is entered.
+-- No cancel, no skip, no bypass. Wrong key = error, stay open.
+showKeyGate = function() return end
+local _oldShowKeyGate = function()
+    _G.enteredKey = nil
+
+    -- Hide the entire main panel if PARENT exists
+    if PARENT then PARENT.Enabled = false end
+    if ScaledHolder then ScaledHolder.Visible = false end
+
+    -- Destroy any existing gate first (safety)
+    local existingGate = game:GetService("CoreGui"):FindFirstChild("CraftXKeyGate")
+    if existingGate then existingGate:Destroy() end
+
+    local gate = Instance.new("ScreenGui")
+    gate.Name = "CraftXKeyGate"
+    gate.DisplayOrder = 9999
+    gate.ResetOnSpawn = false
+    gate.IgnoreGuiInset = true
+    gate.Parent = game:GetService("CoreGui")
+
+    -- Semi-transparent dark backdrop (non-clickable blocker)
+    local overlay = Instance.new("Frame")
+    overlay.Size = UDim2.fromScale(1, 1)
+    overlay.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    overlay.BackgroundTransparency = 0.5
+    overlay.BorderSizePixel = 0
+    overlay.Parent = gate
+
+    -- Card container
+    local card = Instance.new("Frame")
+    card.Size = UDim2.new(0, 340, 0, 230)
+    card.Position = UDim2.new(0.5, -170, 0.5, -115)
+    card.BackgroundColor3 = Color3.fromRGB(46, 46, 47) -- Matches main UI Holder
+    card.BorderSizePixel = 0
+    card.Parent = gate
+    Instance.new("UICorner", card).CornerRadius = UDim.new(0, 8) -- Matches main UI corners roughly
+
+    -- Top accent stripe / Title Bar area
+    local accent = Instance.new("Frame")
+    accent.Size = UDim2.new(1, 0, 0, 30)
+    accent.BackgroundColor3 = Color3.fromRGB(36, 36, 37) -- Matches main UI Title bar
+    accent.BorderSizePixel = 0
+    accent.ZIndex = 2
+    accent.Parent = card
+    local titleCorner = Instance.new("UICorner", accent)
+    titleCorner.CornerRadius = UDim.new(0, 8)
+    
+    -- Square bottom corners for the title bar so it connects to the main card
+    local squareBottom = Instance.new("Frame")
+    squareBottom.Size = UDim2.new(1, 0, 0, 8)
+    squareBottom.Position = UDim2.new(0, 0, 1, -8)
+    squareBottom.BackgroundColor3 = Color3.fromRGB(36, 36, 37)
+    squareBottom.BorderSizePixel = 0
+    squareBottom.ZIndex = 2
+    squareBottom.Parent = accent
+
+    -- Title label
+    local titleLbl = Instance.new("TextLabel")
+    titleLbl.Size = UDim2.new(1, -20, 1, 0)
+    titleLbl.Position = UDim2.new(0, 10, 0, 0)
+    titleLbl.BackgroundTransparency = 1
+    titleLbl.Text = "CraftX Key System"
+    titleLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+    titleLbl.Font = Enum.Font.SourceSans
+    titleLbl.TextSize = 18
+    titleLbl.TextXAlignment = Enum.TextXAlignment.Center
+    titleLbl.ZIndex = 3
+    titleLbl.Parent = accent
+
+    -- Subtitle
+    local subLbl = Instance.new("TextLabel")
+    subLbl.Size = UDim2.new(1, -20, 0, 36)
+    subLbl.Position = UDim2.new(0, 10, 0, 50)
+    subLbl.BackgroundTransparency = 1
+    subLbl.Text = "You must enter a valid key to use CraftX.\nGet yours from the Discord bot."
+    subLbl.TextColor3 = Color3.fromRGB(200, 200, 200)
+    subLbl.Font = Enum.Font.SourceSans
+    subLbl.TextSize = 16
+    subLbl.TextWrapped = true
+    subLbl.TextXAlignment = Enum.TextXAlignment.Center
+    subLbl.Parent = card
+
+    -- Input background
+    local boxBg = Instance.new("Frame")
+    boxBg.Size = UDim2.new(1, -20, 0, 38)
+    boxBg.Position = UDim2.new(0, 10, 0, 96)
+    boxBg.BackgroundColor3 = Color3.fromRGB(36, 36, 37)
+    boxBg.BorderSizePixel = 0
+    boxBg.Parent = card
+
+    -- Input textbox
+    local textbox = Instance.new("TextBox")
+    textbox.Size = UDim2.new(1, -16, 1, 0)
+    textbox.Position = UDim2.new(0, 8, 0, 0)
+    textbox.BackgroundTransparency = 1
+    textbox.PlaceholderText = "Paste your key here..."
+    textbox.PlaceholderColor3 = Color3.fromRGB(150, 150, 150)
+    textbox.TextColor3 = Color3.new(1, 1, 1)
+    textbox.Font = Enum.Font.SourceSans
+    textbox.TextSize = 16
+    textbox.TextXAlignment = Enum.TextXAlignment.Left
+    textbox.ClearTextOnFocus = false
+    textbox.Text = savedKey or ""
+    textbox.Parent = boxBg
+
+    -- Error label (hidden initially)
+    local errLbl = Instance.new("TextLabel")
+    errLbl.Size = UDim2.new(1, -20, 0, 18)
+    errLbl.Position = UDim2.new(0, 10, 0, 140)
+    errLbl.BackgroundTransparency = 1
+    errLbl.Text = "Incorrect key. Please try again."
+    errLbl.TextColor3 = Color3.fromRGB(255, 80, 80)
+    errLbl.Font = Enum.Font.SourceSans
+    errLbl.TextSize = 16
+    errLbl.TextXAlignment = Enum.TextXAlignment.Center
+    errLbl.Visible = false
+    errLbl.Parent = card
+
+    -- Submit button
+    local submitBtn = Instance.new("TextButton")
+    submitBtn.Size = UDim2.new(1, -20, 0, 42)
+    submitBtn.Position = UDim2.new(0, 10, 0, 175)
+    submitBtn.BackgroundColor3 = Color3.fromRGB(36, 36, 37)
+    submitBtn.BorderSizePixel = 0
+    submitBtn.Text = "Submit Key"
+    submitBtn.TextColor3 = Color3.new(1, 1, 1)
+    submitBtn.Font = Enum.Font.SourceSansBold
+    submitBtn.TextSize = 18
+    submitBtn.Parent = card
+
+    submitBtn.MouseEnter:Connect(function()
+        submitBtn.BackgroundColor3 = Color3.fromRGB(56, 56, 57)
+    end)
+    submitBtn.MouseLeave:Connect(function()
+        submitBtn.BackgroundColor3 = Color3.fromRGB(36, 36, 37)
+    end)
+
+    -- Core validation — ONLY the correct key unlocks the UI
+    local isAuthenticating = false
+    local function trySubmit()
+        if isAuthenticating then return end
+        local entered = textbox.Text
+        if entered == DISCORD_URL then
+            isAuthenticating = true
+            -- Correct key: start authentication flow
+            _G.enteredKey = entered
+            
+            errLbl.Visible = false
+            textbox.TextEditable = false
+            submitBtn.BackgroundColor3 = Color3.fromRGB(36, 150, 37) -- Green success
+            
+            -- Save for pre-fill next time (still must re-enter each session)
+            pcall(function()
+                if writefile then writefile(keySavePath, entered) end
+            end)
+            
+            -- Cool wait animation
+            task.spawn(function()
+                game.StarterGui:SetCore("SendNotification", {
+                    Title = "CraftX System",
+                    Text = "Thank you! Your key was successfully activated. Authenticating...",
+                    Duration = 10,
+                })
+                
+                -- Wait 6 seconds with dots animation
+                for i = 1, 6 do
+                    submitBtn.Text = "Authenticating" .. string.rep(".", i % 4)
+                    task.wait(1)
+                end
+                submitBtn.Text = "Welcome to CraftX!"
+                task.wait(0.5)
+                
+                -- Tween animation to close the gate
+                local TweenService = game:GetService("TweenService")
+                local tweenInfo = TweenInfo.new(0.6, Enum.EasingStyle.Back, Enum.EasingDirection.In)
+                TweenService:Create(card, tweenInfo, {Size = UDim2.new(0, 0, 0, 0), Position = UDim2.new(0.5, 0, 0.5, 0)}):Play()
+                TweenService:Create(overlay, TweenInfo.new(0.6), {BackgroundTransparency = 1}):Play()
+                
+                task.wait(0.6)
+                gate:Destroy()
+                
+                -- Finally unlock and show main UI
+                if PARENT then PARENT.Enabled = true end
+                if ScaledHolder then ScaledHolder.Visible = true end
+            end)
+        else
+            -- Wrong key: show error, clear box, keep gate up
+            errLbl.Visible = true
+            textbox.Text = ""
+            task.wait(0.05)
+            textbox:CaptureFocus()
+        end
+    end
+
+    submitBtn.MouseButton1Click:Connect(trySubmit)
+
+    -- Allow Enter key to submit
+    textbox.FocusLost:Connect(function(enterPressed)
+        if enterPressed then trySubmit() end
+    end)
+end
+
+-- Logout clears saved key and forces the gate again
+local function logoutKey()
+    savedKey = nil
+    pcall(function()
+        if writefile then writefile(keySavePath, "") end
+    end)
+    hideSettings()
+    showKeyGate()
+end
+
+local function runCustomScript(code)
+    if #code > 2000 then
+        game.StarterGui:SetCore("SendNotification", {Title="Script Too Long", Text="Maximum 2000 characters.", Duration=3})
+        return
+    end
+    local success, err = pcall(function()
+        local fn = loadstring(code)
+        if fn then fn() end
+    end)
+    if not success then
+        game.StarterGui:SetCore("SendNotification", {Title="Script Error", Text=err, Duration=5})
+    else
+        game.StarterGui:SetCore("SendNotification", {Title="Script Executed", Text="Custom script ran.", Duration=3})
+    end
+end
+
+-- ALWAYS show key gate on load — no auto-login, no bypass
+showKeyGate()
+
+-- KeyButton re-opens the gate if pressed
+KeyButton.MouseButton1Click:Connect(showKeyGate)
+
+
 Prefix = Instance.new("TextLabel")
 PrefixBox = Instance.new("TextBox")
 Keybinds = Instance.new("TextLabel")
@@ -341,8 +618,9 @@ Holder.Parent = ScaledHolder
 Holder.Active = true
 Holder.BackgroundColor3 = Color3.fromRGB(46, 46, 47)
 Holder.BorderSizePixel = 0
-Holder.Position = UDim2.new(1, -250, 1, -220)
-Holder.Size = UDim2.new(0, 250, 0, 220)
+-- Widened by 38px on left to accommodate sidebar
+Holder.Position = UDim2.new(1, -288, 1, -220)
+Holder.Size = UDim2.new(0, 288, 0, 220)
 Holder.ZIndex = 10
 table.insert(shade2,Holder)
 
@@ -351,6 +629,8 @@ Title.Parent = Holder
 Title.Active = true
 Title.BackgroundColor3 = Color3.fromRGB(36,36,37)
 Title.BorderSizePixel = 0
+-- Offset right by sidebar width (38px)
+Title.Position = UDim2.new(0, 38, 0, 0)
 Title.Size = UDim2.new(0, 250, 0, 20)
 Title.Font = Enum.Font.SourceSans
 Title.TextSize = 18
@@ -396,7 +676,7 @@ Dark.Parent = Holder
 Dark.Active = true
 Dark.BackgroundColor3 = Color3.fromRGB(36, 36, 37)
 Dark.BorderSizePixel = 0
-Dark.Position = UDim2.new(0, 0, 0, 45)
+Dark.Position = UDim2.new(0, 38, 0, 45)
 Dark.Size = UDim2.new(0, 250, 0, 175)
 Dark.ZIndex = 10
 table.insert(shade1,Dark)
@@ -405,8 +685,8 @@ Cmdbar.Name = "Cmdbar"
 Cmdbar.Parent = Holder
 Cmdbar.BackgroundTransparency = 1
 Cmdbar.BorderSizePixel = 0
-Cmdbar.Position = UDim2.new(0, 5, 0, 20)
-Cmdbar.Size = UDim2.new(0, 240, 0, 25)
+Cmdbar.Position = UDim2.new(0, 43, 0, 20)
+Cmdbar.Size = UDim2.new(0, 235, 0, 25)
 Cmdbar.Font = Enum.Font.SourceSans
 Cmdbar.TextSize = 18
 Cmdbar.TextXAlignment = Enum.TextXAlignment.Left
@@ -419,7 +699,7 @@ CMDsF.Name = "CMDs"
 CMDsF.Parent = Holder
 CMDsF.BackgroundTransparency = 1
 CMDsF.BorderSizePixel = 0
-CMDsF.Position = UDim2.new(0, 5, 0, 45)
+CMDsF.Position = UDim2.new(0, 43, 0, 45)
 CMDsF.Size = UDim2.new(0, 245, 0, 175)
 CMDsF.ScrollBarImageColor3 = Color3.fromRGB(78,78,79)
 CMDsF.BottomImage = "rbxasset://textures/ui/Scroll/scroll-middle.png"
@@ -433,19 +713,112 @@ table.insert(scroll,CMDsF)
 
 cmdListLayout.Parent = CMDsF
 
+-- ============================================================
+-- LEFT SIDEBAR: CraftX logo + Discord + YouTube + Settings
+-- Sits on the left 38px strip of Holder
+-- ============================================================
+do
+    local SIDEBAR_W = 38
+    local BTN_SIZE  = 28
+    local BTN_X     = (SIDEBAR_W - BTN_SIZE) / 2  -- centers 28px btn in 38px strip
+    local CRAFTX_URL  = "https://craftxstudios.com/"
+    local DISCORD_URL2 = "https://discord.gg/zQtMEEgEEc"
+    local YOUTUBE_URL  = "https://www.youtube.com/@CoolGamerN6767"
+
+    -- Sidebar background strip
+    local SideBar = Instance.new("Frame")
+    SideBar.Name = "SideBar"
+    SideBar.Parent = Holder
+    SideBar.BackgroundColor3 = Color3.fromRGB(28, 28, 30)
+    SideBar.BorderSizePixel = 0
+    SideBar.Position = UDim2.new(0, 0, 0, 0)
+    SideBar.Size = UDim2.new(0, SIDEBAR_W, 1, 0)
+    SideBar.ZIndex = 11
+
+    -- Helper: make a rounded icon button
+    local function makeSideBtn(icon, yPos, tooltip)
+        local btn = Instance.new("ImageButton")
+        btn.Name = tooltip
+        btn.Parent = SideBar
+        btn.BackgroundColor3 = Color3.fromRGB(50, 50, 55)
+        btn.BorderSizePixel = 0
+        btn.Position = UDim2.new(0, BTN_X, 0, yPos)
+        btn.Size = UDim2.new(0, BTN_SIZE, 0, BTN_SIZE)
+        btn.Image = icon
+        btn.ScaleType = Enum.ScaleType.Fit
+        btn.ZIndex = 12
+        -- Rounded corners
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 8)
+        corner.Parent = btn
+        -- Hover effect
+        btn.MouseEnter:Connect(function()
+            btn.BackgroundColor3 = Color3.fromRGB(70, 70, 80)
+        end)
+        btn.MouseLeave:Connect(function()
+            btn.BackgroundColor3 = Color3.fromRGB(50, 50, 55)
+        end)
+        return btn
+    end
+
+    -- 1. CraftX logo (top) — copies website URL
+    local craftxBtn = makeSideBtn(ICONS.CRAFTX, 8, "CraftX")
+    craftxBtn.MouseButton1Click:Connect(function()
+        if everyClipboard then
+            everyClipboard(CRAFTX_URL)
+            notify("CraftX", "Website URL copied!")
+        end
+    end)
+
+    -- 2. Discord — copies Discord invite URL
+    local discordBtn = makeSideBtn(ICONS.DISCORD, 46, "Discord")
+    discordBtn.MouseButton1Click:Connect(function()
+        if everyClipboard then
+            everyClipboard(DISCORD_URL2)
+            notify("Discord", "Discord invite copied!")
+        end
+    end)
+
+    -- 3. YouTube — copies YouTube channel URL
+    local youtubeBtn = makeSideBtn(ICONS.YOUTUBE, 84, "YouTube")
+    youtubeBtn.MouseButton1Click:Connect(function()
+        if everyClipboard then
+            everyClipboard(YOUTUBE_URL)
+            notify("YouTube", "YouTube URL copied!")
+        end
+    end)
+
+    -- 4. Settings (bottom) — opens settings panel
+    local sideSettingsBtn = makeSideBtn(ICONS.SETTINGS, 130, "SettingsSide")
+    sideSettingsBtn.MouseButton1Click:Connect(showSettings)
+
+    -- Thin divider line between sidebar and main content
+    local divider = Instance.new("Frame")
+    divider.Name = "SidebarDivider"
+    divider.Parent = Holder
+    divider.BackgroundColor3 = Color3.fromRGB(60, 60, 65)
+    divider.BorderSizePixel = 0
+    divider.Position = UDim2.new(0, SIDEBAR_W, 0, 0)
+    divider.Size = UDim2.new(0, 1, 1, 0)
+    divider.ZIndex = 11
+end
+
+-- SettingsButton now moved to sidebar; keep hidden legacy reference
 SettingsButton.Name = "SettingsButton"
 SettingsButton.Parent = Holder
 SettingsButton.BackgroundTransparency = 1
-SettingsButton.Position = UDim2.new(0, 230, 0, 0)
+SettingsButton.Position = UDim2.new(0, 268, 0, 0)
 SettingsButton.Size = UDim2.new(0, 20, 0, 20)
 SettingsButton.Image = getcustomasset("infiniteyield/assets/settings.png")
+SettingsButton.Visible = false  -- hidden; sidebar button is used instead
 SettingsButton.ZIndex = 10
+SettingsButton.MouseButton1Click:Connect(showSettings)
 
 ReferenceButton = Instance.new("ImageButton")
 ReferenceButton.Name = "ReferenceButton"
 ReferenceButton.Parent = Holder
 ReferenceButton.BackgroundTransparency = 1
-ReferenceButton.Position = UDim2.new(0, 212, 0, 2)
+ReferenceButton.Position = UDim2.new(0, 250, 0, 2)
 ReferenceButton.Size = UDim2.new(0, 16, 0, 16)
 ReferenceButton.Image = getcustomasset("infiniteyield/assets/reference.png")
 ReferenceButton.ZIndex = 10
@@ -457,6 +830,159 @@ Settings.BackgroundColor3 = Color3.fromRGB(36, 36, 37)
 Settings.BorderSizePixel = 0
 Settings.Position = UDim2.new(0, 0, 0, 220)
 Settings.Size = UDim2.new(0, 250, 0, 175)
+Settings.Visible = false -- start hidden
+-- Profile Frame
+local ProfileFrame = Instance.new("Frame")
+ProfileFrame.Name = "Profile"
+ProfileFrame.BackgroundTransparency = 1
+ProfileFrame.Size = UDim2.new(1, -10, 0, 60)
+ProfileFrame.Position = UDim2.new(0, 5, 0, 5)
+ProfileFrame.Parent = Settings
+
+local Avatar = Instance.new("ImageLabel")
+Avatar.Name = "Avatar"
+Avatar.Size = UDim2.new(0, 50, 0, 50)
+Avatar.Position = UDim2.new(0, 0, 0, 0)
+Avatar.BackgroundTransparency = 1
+local thumbUrl = Players:GetUserThumbnailAsync(Players.LocalPlayer.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size150x150)
+Avatar.Image = thumbUrl
+Avatar.Parent = ProfileFrame
+
+local Username = Instance.new("TextLabel")
+Username.Name = "Username"
+Username.Size = UDim2.new(1, -60, 0, 30)
+Username.Position = UDim2.new(0, 60, 0, 0)
+Username.BackgroundTransparency = 1
+Username.Text = Players.LocalPlayer.Name
+Username.TextColor3 = Color3.new(1,1,1)
+Username.Font = Enum.Font.SourceSans
+Username.TextSize = 14
+Username.TextXAlignment = Enum.TextXAlignment.Left
+Username.Parent = ProfileFrame
+
+local UserIdLabel = Instance.new("TextLabel")
+UserIdLabel.Name = "UserId"
+UserIdLabel.Size = UDim2.new(1, -60, 0, 20)
+UserIdLabel.Position = UDim2.new(0, 60, 0, 30)
+UserIdLabel.BackgroundTransparency = 1
+UserIdLabel.Text = "ID: " .. Players.LocalPlayer.UserId
+UserIdLabel.TextColor3 = Color3.new(1,1,1)
+UserIdLabel.Font = Enum.Font.SourceSans
+UserIdLabel.TextSize = 12
+UserIdLabel.TextXAlignment = Enum.TextXAlignment.Left
+UserIdLabel.Parent = ProfileFrame
+
+-- Save Key button
+local SaveKeyButton = Instance.new("ImageButton")
+SaveKeyButton.Name = "SaveKey"
+SaveKeyButton.Size = UDim2.new(0, 24, 0, 24)
+SaveKeyButton.Position = UDim2.new(1, -30, 0, 65)
+SaveKeyButton.BackgroundTransparency = 1
+SaveKeyButton.Image = ICONS.EXECUTE
+SaveKeyButton.Parent = Settings
+SaveKeyButton.MouseButton1Click:Connect(function()
+    if _G.enteredKey and isfile and writefile then
+        pcall(function()
+            writefile(keySavePath, _G.enteredKey)
+        end)
+        game.StarterGui:SetCore("SendNotification", {Title="Key Saved", Text="Key will be auto‑loaded next time.", Duration=3})
+    else
+        game.StarterGui:SetCore("SendNotification", {Title="No Key", Text="Enter a key via Get Key first.", Duration=3})
+    end
+end)
+
+-- Logout button
+local LogoutButton = Instance.new("ImageButton")
+LogoutButton.Name = "Logout"
+LogoutButton.Size = UDim2.new(0, 24, 0, 24)
+LogoutButton.Position = UDim2.new(1, -30, 0, 5)
+LogoutButton.BackgroundTransparency = 1
+LogoutButton.Image = ICONS.LOGOUT
+LogoutButton.Parent = Settings
+LogoutButton.MouseButton1Click:Connect(logoutKey)
+
+-- Back button
+local BackButton = Instance.new("ImageButton")
+BackButton.Name = "Back"
+BackButton.Size = UDim2.new(0, 24, 0, 24)
+BackButton.Position = UDim2.new(1, -30, 0, 35)
+BackButton.BackgroundTransparency = 1
+BackButton.Image = ICONS.BACK
+BackButton.Parent = Settings
+BackButton.MouseButton1Click:Connect(hideSettings)
+
+-- Custom Script Box
+local ScriptBox = Instance.new("TextBox")
+ScriptBox.Name = "CustomScriptBox"
+ScriptBox.Size = UDim2.new(1, -60, 0, 40)
+ScriptBox.Position = UDim2.new(0, 5, 0, 70)
+ScriptBox.BackgroundColor3 = Color3.fromRGB(30,30,30)
+ScriptBox.Text = ""
+ScriptBox.PlaceholderText = "Paste Lua script..."
+ScriptBox.TextColor3 = Color3.new(1,1,1)
+ScriptBox.Font = Enum.Font.SourceSans
+ScriptBox.TextSize = 13
+ScriptBox.Parent = Settings
+
+local ExecButton = Instance.new("ImageButton")
+ExecButton.Name = "Execute"
+ExecButton.Size = UDim2.new(0, 24, 0, 24)
+ExecButton.Position = UDim2.new(1, -30, 0, 70)
+ExecButton.BackgroundTransparency = 1
+ExecButton.Image = ICONS.EXECUTE
+ExecButton.Parent = Settings
+ExecButton.MouseButton1Click:Connect(function()
+    runCustomScript(ScriptBox.Text)
+end)
+
+-- Placeholder Theme and Credits buttons
+local function makeSettingsButton(name, iconID, off)
+    local button = Instance.new("TextButton")
+    button.BackgroundColor3 = Color3.fromRGB(46, 46, 47)
+    button.BorderSizePixel = 0
+    button.Position = UDim2.new(0,0,0,0)
+    button.Size = UDim2.new(1,0,0,25)
+    button.Text = ""
+    button.ZIndex = 10
+    local icon = Instance.new("ImageLabel")
+    icon.Name = "Icon"
+    icon.Parent = button
+    icon.Position = UDim2.new(0,5,0,5)
+    icon.Size = UDim2.new(0,16,0,16)
+    icon.BackgroundTransparency = 1
+    icon.Image = iconID
+    icon.ZIndex = 10
+    if off then
+        icon.ScaleType = Enum.ScaleType.Crop
+        icon.ImageRectSize = Vector2.new(16,16)
+        icon.ImageRectOffset = Vector2.new(off,0)
+    end
+    local label = Instance.new("TextLabel")
+    label.Name = "ButtonLabel"
+    label.Parent = button
+    label.BackgroundTransparency = 1
+    label.Text = name
+    label.Position = UDim2.new(0,28,0,0)
+    label.Size = UDim2.new(1,-28,1,0)
+    label.Font = Enum.Font.SourceSans
+    label.TextColor3 = Color3.new(1, 1, 1)
+    label.TextSize = 14
+    label.ZIndex = 10
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    table.insert(shade2,button)
+    table.insert(text1,label)
+    return button
+end
+
+local ThemeButton = makeSettingsButton("Theme", ICONS.SETTINGS)
+ThemeButton.Position = UDim2.new(0,5,0,210)
+ThemeButton.Size = UDim2.new(1,-10,0,25)
+ThemeButton.Parent = SettingsHolder
+
+local CreditsButton = makeSettingsButton("Credits", ICONS.SETTINGS)
+CreditsButton.Position = UDim2.new(0,5,0,240)
+CreditsButton.Size = UDim2.new(1,-10,0,25)
+CreditsButton.Parent = SettingsHolder
 Settings.ZIndex = 10
 table.insert(shade1,Settings)
 
@@ -506,43 +1032,7 @@ PrefixBox.ZIndex = 10
 table.insert(shade3,PrefixBox)
 table.insert(text2,PrefixBox)
 
-function makeSettingsButton(name,iconID,off)
-	local button = Instance.new("TextButton")
-	button.BackgroundColor3 = Color3.fromRGB(46, 46, 47)
-	button.BorderSizePixel = 0
-	button.Position = UDim2.new(0,0,0,0)
-	button.Size = UDim2.new(1,0,0,25)
-	button.Text = ""
-	button.ZIndex = 10
-	local icon = Instance.new("ImageLabel")
-	icon.Name = "Icon"
-	icon.Parent = button
-	icon.Position = UDim2.new(0,5,0,5)
-	icon.Size = UDim2.new(0,16,0,16)
-	icon.BackgroundTransparency = 1
-	icon.Image = iconID
-	icon.ZIndex = 10
-	if off then
-		icon.ScaleType = Enum.ScaleType.Crop
-		icon.ImageRectSize = Vector2.new(16,16)
-		icon.ImageRectOffset = Vector2.new(off,0)
-	end
-	local label = Instance.new("TextLabel")
-	label.Name = "ButtonLabel"
-	label.Parent = button
-	label.BackgroundTransparency = 1
-	label.Text = name
-	label.Position = UDim2.new(0,28,0,0)
-	label.Size = UDim2.new(1,-28,1,0)
-	label.Font = Enum.Font.SourceSans
-	label.TextColor3 = Color3.new(1, 1, 1)
-	label.TextSize = 14
-	label.ZIndex = 10
-	label.TextXAlignment = Enum.TextXAlignment.Left
-	table.insert(shade2,button)
-	table.insert(text1,label)
-	return button
-end
+-- makeSettingsButton moved earlier; original definition removed
 
 ColorsButton = makeSettingsButton("Edit Theme",getcustomasset("infiniteyield/assets/edittheme.png"))
 ColorsButton.Position = UDim2.new(0, 5, 0, 55)
@@ -13282,8 +13772,9 @@ task.spawn(function()
 
     -- 2. Setup assets (CraftX Logo and icons)
     local logoAsset = "rbxassetid://15264353457" -- Default logo
-    local discordIcon = "rbxassetid://6031268953"
-    local youtubeIcon = "rbxassetid://7072718260"
+    local discordIcon = "rbxassetid://14882565614"
+    local youtubeIcon = "rbxassetid://14882565780"
+    local settingsIcon = "rbxassetid://1204397029"
     local customLogoPath = "craftx_logo_night.png"
 
     pcall(function()
@@ -13344,7 +13835,7 @@ task.spawn(function()
         lbl.Size = UDim2.new(1, -20, 1, 0)
         lbl.Position = UDim2.new(0, 10, 0, 0)
         lbl.BackgroundTransparency = 1
-        lbl.Font = Enum.Font.GothamMedium
+        lbl.Font = Enum.Font.Jura
         lbl.TextColor3 = Color3.fromRGB(255, 255, 255)
         lbl.TextSize = 13
         lbl.Text = text
@@ -13366,7 +13857,7 @@ task.spawn(function()
     end
 
     -- 5. Skidnet Key Authentication System Configuration
-    local SKIDNET_PROJECT_ID = "YOUR_PROJECT_ID" -- User should change this to their Skidnet Project ID
+    local SKIDNET_PROJECT_ID = "FJB0cdRpRq" -- User should change this to their Skidnet Project ID
     local keySavePath = "craftx_night_key.txt"
     local bypassKey = "CraftX-Bypass"
 
@@ -13375,12 +13866,11 @@ task.spawn(function()
             return true, "Bypass Key"
         end
         
-        -- Offline auto-bypass if not configured, to let the user test instantly
-        if SKIDNET_PROJECT_ID == "YOUR_PROJECT_ID" then
-            return true, "Offline Test Bypass"
-        end
 
-        local url = "https://api.skidnet.lol/api/key/validate?key=" .. tostring(key) .. "&project=" .. tostring(SKIDNET_PROJECT_ID)
+
+        -- Local Discord Bot API Validation
+        local cleanKey = tostring(key):gsub("%s+", "") -- Remove any invisible spaces
+        local url = "http://127.0.0.1:5000/validate?key=" .. cleanKey
         local success, result = pcall(function()
             return game:HttpGet(url)
         end)
@@ -13494,11 +13984,12 @@ task.spawn(function()
         kpCorner.CornerRadius = UDim.new(0, 12)
         kpCorner.Parent = KeyPanel
 
-        -- Scaling spring entrance
+        -- Bouncing drop entrance
         local keyScale = Instance.new("UIScale")
-        keyScale.Scale = 0.05
+        keyScale.Scale = 1
         keyScale.Parent = KeyPanel
-        TweenService:Create(keyScale, TweenInfo.new(0.5, Enum.EasingStyle.Back), {Scale = 1}):Play()
+        KeyPanel.Position = UDim2.new(0.5, 0, -0.5, 0)
+        TweenService:Create(KeyPanel, TweenInfo.new(1.5, Enum.EasingStyle.Bounce, Enum.EasingDirection.Out), {Position = UDim2.new(0.5, 0, 0.5, 0)}):Play()
 
         -- Key system rain background
         local stopRain = startRainEffect(KeyPanel)
@@ -13521,7 +14012,7 @@ task.spawn(function()
         kTitle.Size = UDim2.new(1, 0, 0, 20)
         kTitle.Position = UDim2.new(0, 0, 0, 64)
         kTitle.BackgroundTransparency = 1
-        kTitle.Font = Enum.Font.GothamBold
+        kTitle.Font = Enum.Font.Jura
         kTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
         kTitle.TextSize = 14
         kTitle.Text = "CraftX Key Authenticator"
@@ -13533,7 +14024,7 @@ task.spawn(function()
         kMsg.Size = UDim2.new(0.9, 0, 0, 30)
         kMsg.Position = UDim2.new(0.05, 0, 0, 88)
         kMsg.BackgroundTransparency = 1
-        kMsg.Font = Enum.Font.Gotham
+        kMsg.Font = Enum.Font.Jura
         kMsg.TextColor3 = Color3.fromRGB(180, 180, 180)
         kMsg.TextSize = 11
         kMsg.Text = "Please enter your key to unlock the script."
@@ -13546,7 +14037,7 @@ task.spawn(function()
         kClose.Position = UDim2.new(1, -28, 0, 10)
         kClose.BackgroundColor3 = Color3.fromRGB(22, 163, 74)
         kClose.BackgroundTransparency = 0.8
-        kClose.Font = Enum.Font.GothamBold
+        kClose.Font = Enum.Font.Jura
         kClose.TextColor3 = Color3.fromRGB(255, 255, 255)
         kClose.TextSize = 10
         kClose.Text = "X"
@@ -13585,7 +14076,7 @@ task.spawn(function()
         KeyInput.Size = UDim2.new(1, -20, 1, 0)
         KeyInput.Position = UDim2.new(0, 10, 0, 0)
         KeyInput.BackgroundTransparency = 1
-        KeyInput.Font = Enum.Font.Gotham
+        KeyInput.Font = Enum.Font.Jura
         KeyInput.PlaceholderText = "Enter Key Here... (Try CraftX-Bypass)"
         KeyInput.PlaceholderColor3 = Color3.fromRGB(120, 120, 120)
         KeyInput.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -13600,7 +14091,7 @@ task.spawn(function()
         kSubmit.Position = UDim2.new(0.5, -140, 0, 175)
         kSubmit.BackgroundColor3 = Color3.fromRGB(34, 197, 94)
         kSubmit.BackgroundTransparency = 0.2
-        kSubmit.Font = Enum.Font.GothamBold
+        kSubmit.Font = Enum.Font.Jura
         kSubmit.TextColor3 = Color3.fromRGB(255, 255, 255)
         kSubmit.TextSize = 12
         kSubmit.Text = "Submit Key"
@@ -13623,7 +14114,7 @@ task.spawn(function()
         kGetKey.Position = UDim2.new(0.5, 5, 0, 175)
         kGetKey.BackgroundColor3 = Color3.fromRGB(13, 26, 18)
         kGetKey.BackgroundTransparency = 0.5
-        kGetKey.Font = Enum.Font.GothamBold
+        kGetKey.Font = Enum.Font.Jura
         kGetKey.TextColor3 = Color3.fromRGB(180, 180, 180)
         kGetKey.TextSize = 12
         kGetKey.Text = "Get Key"
@@ -13651,7 +14142,7 @@ task.spawn(function()
         end)
 
         kGetKey.MouseButton1Click:Connect(function()
-            local copied = toClipboard("https://skidnet.lol/dashboard")
+            local copied = toClipboard("https://discord.gg/Py3PVu5pSU")
             showNotification("Copied Skidnet Key Dashboard Link!")
         end)
 
@@ -13704,69 +14195,6 @@ task.spawn(function()
 
     -- 7. Main welcome intro and Dashboard Loader
     loadMainGUI = function()
-        -- 5. Intro Animation (Welcome to CraftX Studios)
-        local IntroFrame = Instance.new("Frame")
-        IntroFrame.Name = "IntroFrame"
-        IntroFrame.Size = UDim2.new(1, 0, 1, 0)
-        IntroFrame.BackgroundColor3 = Color3.fromRGB(4, 7, 5)
-        IntroFrame.BorderSizePixel = 0
-        IntroFrame.ZIndex = 20
-        IntroFrame.Parent = CraftXGui
-
-        addForestGradient(IntroFrame)
-
-        -- Glass overlay
-        local GlassOverlay = Instance.new("Frame")
-        GlassOverlay.Size = UDim2.new(1, 0, 1, 0)
-        GlassOverlay.BackgroundColor3 = Color3.fromRGB(34, 197, 94)
-        GlassOverlay.BackgroundTransparency = 0.93
-        GlassOverlay.BorderSizePixel = 0
-        GlassOverlay.ZIndex = 21
-        GlassOverlay.Parent = IntroFrame
-
-        -- Welcome Text
-        local WelcomeText = Instance.new("TextLabel")
-        WelcomeText.Size = UDim2.new(0.8, 0, 0.2, 0)
-        WelcomeText.Position = UDim2.new(0.1, 0, 0.4, 0)
-        WelcomeText.BackgroundTransparency = 1
-        WelcomeText.Font = Enum.Font.GothamBold
-        WelcomeText.TextColor3 = Color3.fromRGB(255, 255, 255)
-        WelcomeText.TextSize = 32
-        WelcomeText.Text = "Welcome to CraftX Studios"
-        WelcomeText.TextTransparency = 1
-        WelcomeText.ZIndex = 22
-        WelcomeText.Parent = IntroFrame
-
-        -- Text Shadow
-        local WelcomeShadow = WelcomeText:Clone()
-        WelcomeShadow.TextColor3 = Color3.fromRGB(34, 197, 94)
-        WelcomeShadow.Position = UDim2.new(0.1, 2, 0.4, 2)
-        WelcomeShadow.ZIndex = 21
-        WelcomeShadow.Parent = IntroFrame
-
-        -- Start Rain animation
-        local stopIntroRain = startRainEffect(IntroFrame)
-
-        -- Animate Welcome Text
-        TweenService:Create(WelcomeText, TweenInfo.new(1.2, Enum.EasingStyle.Sine), {TextTransparency = 0}):Play()
-        TweenService:Create(WelcomeShadow, TweenInfo.new(1.2, Enum.EasingStyle.Sine), {TextTransparency = 0.6}):Play()
-        
-        -- Slight float animation of welcome text
-        TweenService:Create(WelcomeText, TweenInfo.new(2.5, Enum.EasingStyle.Sine), {Position = UDim2.new(0.1, 0, 0.38, 0)}):Play()
-        TweenService:Create(WelcomeShadow, TweenInfo.new(2.5, Enum.EasingStyle.Sine), {Position = UDim2.new(0.1, 2, 0.38, 2)}):Play()
-        
-        task.wait(2.2)
-        
-        -- Fade out intro
-        stopIntroRain()
-        TweenService:Create(WelcomeText, TweenInfo.new(0.6, Enum.EasingStyle.Sine), {TextTransparency = 1}):Play()
-        TweenService:Create(WelcomeShadow, TweenInfo.new(0.6, Enum.EasingStyle.Sine), {TextTransparency = 1}):Play()
-        TweenService:Create(IntroFrame, TweenInfo.new(0.8, Enum.EasingStyle.Sine), {BackgroundTransparency = 1}):Play()
-        TweenService:Create(GlassOverlay, TweenInfo.new(0.8, Enum.EasingStyle.Sine), {BackgroundTransparency = 1}):Play()
-        
-        task.wait(0.8)
-        IntroFrame:Destroy()
-
         -- 8. Main GUI Panel
         local MainPanel = Instance.new("Frame")
         MainPanel.Name = "MainPanel"
@@ -13792,6 +14220,130 @@ task.spawn(function()
         uiScale.Scale = 0.05
         uiScale.Parent = MainPanel
         TweenService:Create(uiScale, TweenInfo.new(0.6, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
+        -- 9. Executor GUI Panel (Xeno Themed)
+        local ExecutorPanel = Instance.new("Frame")
+        ExecutorPanel.Name = "ExecutorPanel"
+        ExecutorPanel.Size = UDim2.new(0, 720, 0, 460)
+        ExecutorPanel.Position = UDim2.new(0.5, 0, 0.5, 0)
+        ExecutorPanel.AnchorPoint = Vector2.new(0.5, 0.5)
+        ExecutorPanel.BackgroundColor3 = Color3.fromRGB(4, 7, 5)
+        ExecutorPanel.BackgroundTransparency = 0.05
+        ExecutorPanel.BorderSizePixel = 0
+        ExecutorPanel.Visible = false
+        ExecutorPanel.Parent = CraftXGui
+
+        local execCorner = Instance.new("UICorner")
+        execCorner.CornerRadius = UDim.new(0, 12)
+        execCorner.Parent = ExecutorPanel
+
+        addForestGradient(ExecutorPanel)
+        addForestStroke(ExecutorPanel)
+        addForestGlow(ExecutorPanel)
+
+        dragGUI(ExecutorPanel)
+
+        -- Top Bar of Executor
+        local ExecTopBar = Instance.new("Frame")
+        ExecTopBar.Size = UDim2.new(1, 0, 0, 40)
+        ExecTopBar.BackgroundColor3 = Color3.fromRGB(4, 7, 5)
+        ExecTopBar.BackgroundTransparency = 0.5
+        ExecTopBar.BorderSizePixel = 0
+        ExecTopBar.Parent = ExecutorPanel
+
+        local topCorner = Instance.new("UICorner")
+        topCorner.CornerRadius = UDim.new(0, 8)
+        topCorner.Parent = ExecTopBar
+        
+        local topHider = Instance.new("Frame")
+        topHider.Size = UDim2.new(1, 0, 0, 10)
+        topHider.Position = UDim2.new(0, 0, 1, -10)
+        topHider.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+        topHider.BorderSizePixel = 0
+        topHider.Parent = ExecTopBar
+
+        -- Execute Button
+        local ExecRunBtn = Instance.new("TextButton")
+        ExecRunBtn.Size = UDim2.new(0, 100, 0, 26)
+        ExecRunBtn.Position = UDim2.new(0, 10, 0, 7)
+        ExecRunBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+        ExecRunBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        ExecRunBtn.Font = Enum.Font.Jura
+        ExecRunBtn.TextSize = 14
+        ExecRunBtn.Text = "▶ Execute"
+        ExecRunBtn.Parent = ExecTopBar
+        local runCorner = Instance.new("UICorner")
+        runCorner.CornerRadius = UDim.new(0, 4)
+        runCorner.Parent = ExecRunBtn
+
+        -- Clear Button
+        local ExecClearBtn = Instance.new("TextButton")
+        ExecClearBtn.Size = UDim2.new(0, 80, 0, 26)
+        ExecClearBtn.Position = UDim2.new(0, 120, 0, 7)
+        ExecClearBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+        ExecClearBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        ExecClearBtn.Font = Enum.Font.Jura
+        ExecClearBtn.TextSize = 14
+        ExecClearBtn.Text = "🗑 Clear"
+        ExecClearBtn.Parent = ExecTopBar
+        local clearCorner = Instance.new("UICorner")
+        clearCorner.CornerRadius = UDim.new(0, 4)
+        clearCorner.Parent = ExecClearBtn
+
+        -- Back Button
+        local ExecBackBtn = Instance.new("TextButton")
+        ExecBackBtn.Size = UDim2.new(0, 80, 0, 26)
+        ExecBackBtn.Position = UDim2.new(1, -90, 0, 7)
+        ExecBackBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+        ExecBackBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        ExecBackBtn.Font = Enum.Font.Jura
+        ExecBackBtn.TextSize = 14
+        ExecBackBtn.Text = "⮌ Back"
+        ExecBackBtn.Parent = ExecTopBar
+        local backCorner = Instance.new("UICorner")
+        backCorner.CornerRadius = UDim.new(0, 4)
+        backCorner.Parent = ExecBackBtn
+
+        -- TextBox for scripting
+        local ExecBox = Instance.new("TextBox")
+        ExecBox.Size = UDim2.new(1, -20, 1, -60)
+        ExecBox.Position = UDim2.new(0, 10, 0, 50)
+        ExecBox.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        ExecBox.TextColor3 = Color3.fromRGB(200, 200, 200)
+        ExecBox.Font = Enum.Font.Code
+        ExecBox.TextSize = 14
+        ExecBox.TextXAlignment = Enum.TextXAlignment.Left
+        ExecBox.TextYAlignment = Enum.TextYAlignment.Top
+        ExecBox.ClearTextOnFocus = false
+        ExecBox.MultiLine = true
+        ExecBox.Text = "-- Welcome to CraftX Executor (Xeno Theme)\n-- Paste your scripts here!\n\nprint('Hello CraftX!')"
+        ExecBox.Parent = ExecutorPanel
+        
+        local boxCorner = Instance.new("UICorner")
+        boxCorner.CornerRadius = UDim.new(0, 6)
+        boxCorner.Parent = ExecBox
+        local boxStroke = Instance.new("UIStroke")
+        boxStroke.Color = Color3.fromRGB(40, 40, 40)
+        boxStroke.Thickness = 1
+        boxStroke.Parent = ExecBox
+
+        -- Functionality
+        ExecClearBtn.MouseButton1Click:Connect(function()
+            ExecBox.Text = ""
+        end)
+        ExecRunBtn.MouseButton1Click:Connect(function()
+            local success, err = pcall(function()
+                local f = loadstring(ExecBox.Text)
+                if f then f() else warn("Failed to compile script.") end
+            end)
+            if not success then
+                warn("Execution Error: " .. tostring(err))
+            end
+        end)
+        ExecBackBtn.MouseButton1Click:Connect(function()
+            ExecutorPanel.Visible = false
+            MainPanel.Visible = true
+        end)
+
 
         -- Sidebar
         local Sidebar = Instance.new("Frame")
@@ -13828,46 +14380,107 @@ task.spawn(function()
         logoText.Size = UDim2.new(1, 0, 0, 15)
         logoText.Position = UDim2.new(0, 0, 0, 64)
         logoText.BackgroundTransparency = 1
-        logoText.Font = Enum.Font.GothamBold
+        logoText.Font = Enum.Font.Jura
         logoText.TextColor3 = Color3.fromRGB(255, 255, 255)
         logoText.TextSize = 10
         logoText.Text = "CraftX"
         logoText.Parent = Sidebar
+        -- Sidebar Executor Link Button
+        local execTabBtn = Instance.new("TextButton")
+        execTabBtn.Size = UDim2.new(0, 60, 0, 24)
+        execTabBtn.Position = UDim2.new(0.5, -30, 0, 95)
+        execTabBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+        execTabBtn.Font = Enum.Font.Jura
+        execTabBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        execTabBtn.TextSize = 11
+        execTabBtn.Text = "Executor"
+        execTabBtn.Parent = Sidebar
+        
+        local tabCorner = Instance.new("UICorner")
+        tabCorner.CornerRadius = UDim.new(0, 4)
+        tabCorner.Parent = execTabBtn
 
-        -- Sidebar Discord Link Button
-        local discordBtn = Instance.new("ImageButton")
-        discordBtn.Size = UDim2.new(0, 32, 0, 32)
-        discordBtn.Position = UDim2.new(0.5, -16, 1, -95)
-        discordBtn.BackgroundTransparency = 1
-        discordBtn.Image = discordIcon
-        discordBtn.ImageColor3 = Color3.fromRGB(255, 255, 255)
-        discordBtn.Parent = Sidebar
+        execTabBtn.MouseButton1Click:Connect(function()
+            task.spawn(function()
+                game.StarterGui:SetCore("SendNotification", {
+                    Title = "CraftX System",
+                    Text = "CraftX executor is opening...",
+                    Duration = 2,
+                })
+                task.wait(1.5)
+                MainPanel.Visible = false
+                ExecutorPanel.Visible = true
+            end)
+        end)
 
-        local dHover = TweenService:Create(discordBtn, TweenInfo.new(0.2), {Size = UDim2.new(0, 36, 0, 36), Position = UDim2.new(0.5, -18, 1, -97)})
-        local dLeave = TweenService:Create(discordBtn, TweenInfo.new(0.2), {Size = UDim2.new(0, 32, 0, 32), Position = UDim2.new(0.5, -16, 1, -95)})
-        discordBtn.MouseEnter:Connect(function() dHover:Play() end)
-        discordBtn.MouseLeave:Connect(function() dLeave:Play() end)
-        discordBtn.MouseButton1Click:Connect(function()
-            local copied = toClipboard("https://discord.gg/zQtMEEgEEc")
-            showNotification("Copied Discord server link!")
+
+        -- Sidebar Settings Link Button
+        local settingsBtn = Instance.new("ImageButton")
+        settingsBtn.Size = UDim2.new(0, 32, 0, 32)
+        settingsBtn.Position = UDim2.new(0.5, -16, 1, -50)
+        settingsBtn.BackgroundTransparency = 1
+        settingsBtn.Image = settingsIcon
+        settingsBtn.ImageColor3 = Color3.fromRGB(255, 255, 255)
+        settingsBtn.Parent = Sidebar
+
+        local sHover = TweenService:Create(settingsBtn, TweenInfo.new(0.2), {Size = UDim2.new(0, 36, 0, 36), Position = UDim2.new(0.5, -18, 1, -52)})
+        local sLeave = TweenService:Create(settingsBtn, TweenInfo.new(0.2), {Size = UDim2.new(0, 32, 0, 32), Position = UDim2.new(0.5, -16, 1, -50)})
+        settingsBtn.MouseEnter:Connect(function() sHover:Play() end)
+        settingsBtn.MouseLeave:Connect(function() sLeave:Play() end)
+        settingsBtn.MouseButton1Click:Connect(function()
+            task.spawn(function()
+                for i = 3, 1, -1 do
+                    game.StarterGui:SetCore("SendNotification", {
+                        Title = "CraftX System",
+                        Text = "Settings is opening in " .. i .. "...",
+                        Duration = 1,
+                    })
+                    task.wait(1)
+                end
+                
+                if _G.showIYSettings then
+                    if _G.IY_PARENT then _G.IY_PARENT.Enabled = true end
+                    _G.showIYSettings()
+                else
+                    showNotification("Settings Opened!")
+                end
+            end)
         end)
 
         -- Sidebar YouTube Link Button
         local youtubeBtn = Instance.new("ImageButton")
         youtubeBtn.Size = UDim2.new(0, 32, 0, 32)
-        youtubeBtn.Position = UDim2.new(0.5, -16, 1, -50)
+        youtubeBtn.Position = UDim2.new(0.5, -16, 1, -95)
         youtubeBtn.BackgroundTransparency = 1
         youtubeBtn.Image = youtubeIcon
         youtubeBtn.ImageColor3 = Color3.fromRGB(255, 255, 255)
         youtubeBtn.Parent = Sidebar
 
-        local yHover = TweenService:Create(youtubeBtn, TweenInfo.new(0.2), {Size = UDim2.new(0, 36, 0, 36), Position = UDim2.new(0.5, -18, 1, -52)})
-        local yLeave = TweenService:Create(youtubeBtn, TweenInfo.new(0.2), {Size = UDim2.new(0, 32, 0, 32), Position = UDim2.new(0.5, -16, 1, -50)})
+        local yHover = TweenService:Create(youtubeBtn, TweenInfo.new(0.2), {Size = UDim2.new(0, 36, 0, 36), Position = UDim2.new(0.5, -18, 1, -97)})
+        local yLeave = TweenService:Create(youtubeBtn, TweenInfo.new(0.2), {Size = UDim2.new(0, 32, 0, 32), Position = UDim2.new(0.5, -16, 1, -95)})
         youtubeBtn.MouseEnter:Connect(function() yHover:Play() end)
         youtubeBtn.MouseLeave:Connect(function() yLeave:Play() end)
         youtubeBtn.MouseButton1Click:Connect(function()
             local copied = toClipboard("https://www.youtube.com/@CraftXStudios")
             showNotification("Copied YouTube channel link!")
+        end)
+
+        -- Sidebar Discord Link Button
+        local discordBtn = Instance.new("ImageButton")
+        discordBtn.Size = UDim2.new(0, 32, 0, 32)
+        discordBtn.Position = UDim2.new(0.5, -16, 1, -140)
+        discordBtn.BackgroundTransparency = 1
+        discordBtn.Image = discordIcon
+        discordBtn.ImageColor3 = Color3.fromRGB(255, 255, 255)
+        discordBtn.Parent = Sidebar
+
+        local dHover = TweenService:Create(discordBtn, TweenInfo.new(0.2), {Size = UDim2.new(0, 36, 0, 36), Position = UDim2.new(0.5, -18, 1, -142)})
+        local dLeave = TweenService:Create(discordBtn, TweenInfo.new(0.2), {Size = UDim2.new(0, 32, 0, 32), Position = UDim2.new(0.5, -16, 1, -140)})
+        discordBtn.MouseEnter:Connect(function() dHover:Play() end)
+        discordBtn.MouseLeave:Connect(function() dLeave:Play() end)
+        discordBtn.MouseButton1Click:Connect(function()
+            local copied = toClipboard("https://discord.gg/zQtMEEgEEc")
+            showNotification("Copied Discord server link!")
         end)
 
         -- Header & Search
@@ -13882,7 +14495,7 @@ task.spawn(function()
         local titleLbl = Instance.new("TextLabel")
         titleLbl.Size = UDim2.new(0.5, 0, 1, 0)
         titleLbl.BackgroundTransparency = 1
-        titleLbl.Font = Enum.Font.GothamBold
+        titleLbl.Font = Enum.Font.Jura
         titleLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
         titleLbl.TextSize = 16
         titleLbl.Text = "CraftX Night Script"
@@ -13895,7 +14508,7 @@ task.spawn(function()
         closeGuiBtn.Position = UDim2.new(1, -24, 0, 13)
         closeGuiBtn.BackgroundColor3 = Color3.fromRGB(22, 163, 74)
         closeGuiBtn.BackgroundTransparency = 0.8
-        closeGuiBtn.Font = Enum.Font.GothamBold
+        closeGuiBtn.Font = Enum.Font.Jura
         closeGuiBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
         closeGuiBtn.TextSize = 12
         closeGuiBtn.Text = "X"
@@ -13938,7 +14551,7 @@ task.spawn(function()
         SearchBox.Size = UDim2.new(1, -20, 1, 0)
         SearchBox.Position = UDim2.new(0, 10, 0, 0)
         SearchBox.BackgroundTransparency = 1
-        SearchBox.Font = Enum.Font.Gotham
+        SearchBox.Font = Enum.Font.Jura
         SearchBox.PlaceholderText = "Search commands..."
         SearchBox.PlaceholderColor3 = Color3.fromRGB(150, 150, 150)
         SearchBox.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -14005,7 +14618,7 @@ task.spawn(function()
         ConsoleRunBtn.Position = UDim2.new(1, -50, 0, 0)
         ConsoleRunBtn.BackgroundColor3 = Color3.fromRGB(22, 163, 74)
         ConsoleRunBtn.BackgroundTransparency = 0.3
-        ConsoleRunBtn.Font = Enum.Font.GothamBold
+        ConsoleRunBtn.Font = Enum.Font.Jura
         ConsoleRunBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
         ConsoleRunBtn.TextSize = 11
         ConsoleRunBtn.Text = "RUN"
@@ -14095,7 +14708,7 @@ task.spawn(function()
             local tabBtn = Instance.new("TextButton")
             tabBtn.Name = name .. "Tab"
             tabBtn.Size = UDim2.new(0, 78, 1, 0)
-            tabBtn.Font = Enum.Font.GothamBold
+            tabBtn.Font = Enum.Font.Jura
             tabBtn.TextSize = 11
             tabBtn.Text = name
             tabBtn.LayoutOrder = idx
@@ -14297,7 +14910,7 @@ task.spawn(function()
             local btn = Instance.new("TextButton")
             btn.Name = cmd.NAME
             btn.Size = UDim2.new(0, 122, 0, 36)
-            btn.Font = Enum.Font.Gotham
+            btn.Font = Enum.Font.Jura
             btn.TextSize = 11
             
             local displayName = cmd.NAME
@@ -14468,11 +15081,103 @@ task.spawn(function()
         end
     end)
 
-    if autoLoginSuccess then
-        -- Load main script directly
-        loadMainGUI()
-    else
-        -- Show Key validation panel first
-        showKeyGUI()
+    local function playCustomIntro(callback)
+        -- The "Arm" pulling the background from the side
+        local IntroFrame = Instance.new("Frame")
+        IntroFrame.Name = "IntroFrame"
+        IntroFrame.Size = UDim2.new(1, 0, 1, 0)
+        IntroFrame.Position = UDim2.new(-1, 0, 0, 0) -- Starts off-screen left
+        IntroFrame.BackgroundColor3 = Color3.fromRGB(4, 7, 5)
+        IntroFrame.BorderSizePixel = 0
+        IntroFrame.ZIndex = 9999
+        IntroFrame.Parent = CraftXGui
+        addForestGradient(IntroFrame)
+
+        -- Glowing "Arm" or "Scanner" on the right edge
+        local ArmScanner = Instance.new("Frame")
+        ArmScanner.Size = UDim2.new(0, 4, 1, 0)
+        ArmScanner.Position = UDim2.new(1, 0, 0, 0)
+        ArmScanner.BackgroundColor3 = Color3.fromRGB(34, 197, 94)
+        ArmScanner.BorderSizePixel = 0
+        ArmScanner.ZIndex = 10001
+        ArmScanner.Parent = IntroFrame
+
+        local ArmGlow = Instance.new("UIStroke")
+        ArmGlow.Color = Color3.fromRGB(34, 197, 94)
+        ArmGlow.Thickness = 12
+        ArmGlow.Transparency = 0.5
+        ArmGlow.Parent = ArmScanner
+
+        local Logo = Instance.new("ImageLabel")
+        Logo.Size = UDim2.new(0, 140, 0, 140)
+        Logo.Position = UDim2.new(0.5, -70, -0.5, 0) -- Starts way above
+        Logo.BackgroundTransparency = 1
+        Logo.Image = "rbxassetid://15264353457"
+        Logo.ZIndex = 10000
+        Logo.Parent = IntroFrame
+
+        local WelcomeText = Instance.new("TextLabel")
+        WelcomeText.Size = UDim2.new(0.8, 0, 0.2, 0)
+        WelcomeText.Position = UDim2.new(0.1, 0, -0.5, 0) -- Starts above
+        WelcomeText.BackgroundTransparency = 1
+        WelcomeText.Font = Enum.Font.Jura
+        WelcomeText.TextColor3 = Color3.fromRGB(255, 255, 255)
+        WelcomeText.TextSize = 36
+        WelcomeText.Text = "Welcome to CraftX Studios."
+        WelcomeText.ZIndex = 10000
+        WelcomeText.Parent = IntroFrame
+
+        local SubText = Instance.new("TextLabel")
+        SubText.Size = UDim2.new(0.8, 0, 0.2, 0)
+        SubText.Position = UDim2.new(0.1, 0, 1.5, 0) -- Starts below
+        SubText.BackgroundTransparency = 1
+        SubText.Font = Enum.Font.Jura
+        SubText.TextColor3 = Color3.fromRGB(180, 180, 180)
+        SubText.TextSize = 22
+        SubText.Text = "Premium Video Editing & Verification Services."
+        SubText.ZIndex = 10000
+        SubText.Parent = IntroFrame
+
+        -- 1. Arm pulls background in from left to right
+        TweenService:Create(IntroFrame, TweenInfo.new(1.2, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Position = UDim2.new(0, 0, 0, 0)}):Play()
+        task.wait(1.5)
+
+        -- 2. Logo drops in and bounces
+        TweenService:Create(Logo, TweenInfo.new(1.2, Enum.EasingStyle.Bounce, Enum.EasingDirection.Out), {Position = UDim2.new(0.5, -70, 0.2, 0)}):Play()
+        task.wait(0.5)
+
+        -- 3. WelcomeText drops and bounces right below Logo
+        TweenService:Create(WelcomeText, TweenInfo.new(1.2, Enum.EasingStyle.Bounce, Enum.EasingDirection.Out), {Position = UDim2.new(0.1, 0, 0.45, 0)}):Play()
+        task.wait(0.5)
+
+        -- 4. SubText rises from bottom
+        TweenService:Create(SubText, TweenInfo.new(1.0, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Position = UDim2.new(0.1, 0, 0.55, 0)}):Play()
+        
+        -- Let them read it
+        task.wait(2.5)
+
+        -- 5. Everything drops down like cartoon physics (Staggered)
+        TweenService:Create(Logo, TweenInfo.new(1, Enum.EasingStyle.Back, Enum.EasingDirection.In), {Position = UDim2.new(0.5, -70, 1.5, 0)}):Play()
+        task.wait(0.2)
+        TweenService:Create(WelcomeText, TweenInfo.new(1, Enum.EasingStyle.Back, Enum.EasingDirection.In), {Position = UDim2.new(0.1, 0, 1.5, 0)}):Play()
+        task.wait(0.2)
+        TweenService:Create(SubText, TweenInfo.new(1, Enum.EasingStyle.Back, Enum.EasingDirection.In), {Position = UDim2.new(0.1, 0, 1.5, 0)}):Play()
+        
+        -- 6. Background fades out
+        task.wait(0.8)
+        TweenService:Create(IntroFrame, TweenInfo.new(0.8, Enum.EasingStyle.Sine), {BackgroundTransparency = 1}):Play()
+        TweenService:Create(ArmScanner, TweenInfo.new(0.8, Enum.EasingStyle.Sine), {BackgroundTransparency = 1}):Play()
+        TweenService:Create(ArmGlow, TweenInfo.new(0.8, Enum.EasingStyle.Sine), {Transparency = 1}):Play()
+
+        task.wait(0.8)
+        IntroFrame:Destroy()
+        if callback then callback() end
     end
+
+    playCustomIntro(function()
+        showKeyGUI()
+    end)
 end)
+
+
+
